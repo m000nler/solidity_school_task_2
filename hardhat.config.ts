@@ -4,6 +4,7 @@ import '@nomicfoundation/hardhat-toolbox';
 import 'hardhat-contract-sizer';
 import 'hardhat-deploy';
 import 'hardhat-docgen';
+import 'solidity-coverage';
 
 import {
   ENV,
