@@ -16,18 +16,33 @@ contract VestingContract is Ownable, ReentrancyGuard {
     bytes32 private _merkleRoot;
     uint256 private _cliffPeriod = 60 * 60 * 24 * 30 * 365 * 2;
 
-
     event Claim(address indexed claimerAddress);
 
-    constructor(IERC20 _token, bytes32 merkleRoot){
+    constructor(IERC20 _token, bytes32 merkleRoot) {
         token = _token;
         _merkleRoot = merkleRoot;
     }
 
-    function claim(uint256 amount, uint256 timestamp, uint256 depositedAmount, bytes32[] calldata merkleProof) public nonReentrant {
-        require((block.timestamp - timestamp) >= _cliffPeriod, "Cliff period didn't end");
+    function claim(
+        uint256 amount,
+        uint256 timestamp,
+        uint256 depositedAmount,
+        bytes32[] calldata merkleProof
+    ) public nonReentrant {
+        require(
+            (block.timestamp - timestamp) >= _cliffPeriod,
+            "Cliff period didn't end"
+        );
         require(depositedAmount >= amount, "Insufficient amount");
-        require(checkIfInMerkleTree(merkleProof, keccak256(abi.encodePacked(msg.sender, depositedAmount, timestamp))), "Invalid proof");
+        require(
+            _checkIfInMerkleTree(
+                merkleProof,
+                keccak256(
+                    abi.encodePacked(msg.sender, depositedAmount, timestamp)
+                )
+            ),
+            "Invalid proof"
+        );
 
         SafeERC20.safeTransfer(token, msg.sender, amount);
 
@@ -38,7 +53,11 @@ contract VestingContract is Ownable, ReentrancyGuard {
         _merkleRoot = merkleRoot;
     }
 
-    function checkIfInMerkleTree(bytes32[] calldata merkleProof, bytes32 node) private view returns (bool) {
+    function _checkIfInMerkleTree(bytes32[] calldata merkleProof, bytes32 node)
+        private
+        view
+        returns (bool)
+    {
         return MerkleProof.verify(merkleProof, _merkleRoot, node);
     }
 }
