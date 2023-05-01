@@ -49,6 +49,28 @@ contract VestingContract is Ownable, ReentrancyGuard {
         emit Claim(msg.sender);
     }
 
+    function claimByAdminSignature(
+        uint256 amount,
+        uint256 depositedAmount,
+        uint256 timestamp,
+        bytes memory signature
+    ) public {
+        bytes32 message = keccak256(
+            abi.encodePacked(msg.sender, depositedAmount, amount, timestamp)
+        );
+        address signer = message.toEthSignedMessageHash().recover(signature);
+        require(signer == owner(), "Invalid signature");
+        require(
+            (block.timestamp - timestamp) >= _cliffPeriod,
+            "Cliff period didn't end"
+        );
+        require(depositedAmount >= amount, "Insufficient amount");
+
+        SafeERC20.safeTransfer(token, msg.sender, amount);
+
+        emit Claim(msg.sender);
+    }
+
     function setNewMerkleRoot(bytes32 merkleRoot) public onlyOwner {
         _merkleRoot = merkleRoot;
     }
