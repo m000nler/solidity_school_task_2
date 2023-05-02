@@ -14,57 +14,58 @@ contract VestingContract is Ownable, ReentrancyGuard {
 
     IERC20 public token;
     bytes32 private _merkleRoot;
+    mapping(address => bool) private _claimed;
     uint256 private _cliffPeriod = 60 * 60 * 24 * 30 * 365 * 2;
+    uint256 private _cliffStarted;
 
     event Claim(address indexed claimerAddress);
 
-    constructor(IERC20 _token, bytes32 merkleRoot) {
+    constructor(
+        IERC20 _token,
+        bytes32 merkleRoot,
+        uint256 cliffStarted
+    ) {
         token = _token;
         _merkleRoot = merkleRoot;
+        _cliffStarted = cliffStarted;
     }
 
-    function claim(
-        uint256 amount,
-        uint256 timestamp,
-        uint256 depositedAmount,
-        bytes32[] calldata merkleProof
-    ) public nonReentrant {
+    function claim(uint256 amount, bytes32[] calldata merkleProof)
+        public
+        nonReentrant
+    {
+        require(!_claimed[msg.sender], "User has already claimed");
         require(
-            (block.timestamp - timestamp) >= _cliffPeriod,
+            block.timestamp - _cliffStarted >= _cliffPeriod,
             "Cliff period didn't end"
         );
-        require(depositedAmount >= amount, "Insufficient amount");
         require(
             _checkIfInMerkleTree(
                 merkleProof,
-                keccak256(
-                    abi.encodePacked(msg.sender, depositedAmount, timestamp)
-                )
+                keccak256(abi.encodePacked(msg.sender, amount))
             ),
             "Invalid proof"
         );
+
+        _claimed[msg.sender] = true;
 
         SafeERC20.safeTransfer(token, msg.sender, amount);
 
         emit Claim(msg.sender);
     }
 
-    function claimByAdminSignature(
-        uint256 amount,
-        uint256 depositedAmount,
-        uint256 timestamp,
-        bytes memory signature
-    ) public {
-        bytes32 message = keccak256(
-            abi.encodePacked(msg.sender, depositedAmount, amount, timestamp)
-        );
+    function claimByAdminSignature(uint256 amount, bytes memory signature)
+        public
+    {
+        bytes32 message = keccak256(abi.encodePacked(msg.sender, amount));
         address signer = message.toEthSignedMessageHash().recover(signature);
         require(signer == owner(), "Invalid signature");
         require(
-            (block.timestamp - timestamp) >= _cliffPeriod,
+            (block.timestamp - _cliffStarted) >= _cliffPeriod,
             "Cliff period didn't end"
         );
-        require(depositedAmount >= amount, "Insufficient amount");
+
+        _claimed[msg.sender] = true;
 
         SafeERC20.safeTransfer(token, msg.sender, amount);
 

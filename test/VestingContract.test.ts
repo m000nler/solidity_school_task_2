@@ -34,23 +34,23 @@ describe('Vesting Contract tests', function () {
       .fill(0)
       .map(() =>
         ethers.utils.solidityPack(
-          ['address', 'uint256', 'uint256'],
-          [new Wallet(randomBytes(32)).address, 10, timeUInt],
+          ['address', 'uint256'],
+          [new Wallet(randomBytes(32)).address, 10],
         ),
       );
 
     randomAddresses = randomAddresses.concat(
       ethers.utils.solidityPack(
-        ['address', 'uint256', 'uint256'],
-        [await signer.getAddress(), 10, timeUInt],
+        ['address', 'uint256'],
+        [await signer.getAddress(), 10],
       ),
     );
 
     const merkleTree = new MerkleTree(
       randomAddresses.concat(
         ethers.utils.solidityPack(
-          ['address', 'uint256', 'uint256'],
-          [await signer1.getAddress(), 5, timeUInt],
+          ['address', 'uint256'],
+          [await signer1.getAddress(), 5],
         ),
       ),
       keccak256,
@@ -60,6 +60,7 @@ describe('Vesting Contract tests', function () {
     const vestingContract = await new VestingContract__factory(signer).deploy(
       token.address,
       merkleTree.getHexRoot(),
+      timeUInt,
     );
 
     return {
@@ -69,7 +70,6 @@ describe('Vesting Contract tests', function () {
       randomAddresses,
       signer,
       signer1,
-      timeUInt,
     };
   }
 
@@ -95,21 +95,21 @@ describe('Vesting Contract tests', function () {
 
   describe('Claim with merkle tree tests', async function () {
     it('Claim test', async function () {
-      const { token, merkleTree, vestingContract, timeUInt, signer1 } =
-        await loadFixture(deployment);
+      const { token, merkleTree, vestingContract, signer1 } = await loadFixture(
+        deployment,
+      );
       await token.transfer(vestingContract.address, 10);
       const data = ethers.utils.solidityPack(
-        ['address', 'uint256', 'uint256'],
-        [await signer1.getAddress(), 5, timeUInt],
+        ['address', 'uint256'],
+        [await signer1.getAddress(), 5],
       );
       const proof = merkleTree.getHexProof(keccak256(data));
       await network.provider.send('evm_increaseTime', [
         60 * 60 * 24 * 30 * 365 * 2,
       ]);
-      await vestingContract.connect(signer1).claim(2, timeUInt, 5, proof);
+      await vestingContract.connect(signer1).claim(5, proof);
       const balance = await token.balanceOf(vestingContract.address);
-      expect(balance.toString()).is.eq('8');
-      // await coverage.stopCoverage();
+      expect(balance.toString()).is.eq('5');
     });
 
     it('New merkle root test', async function () {
@@ -119,123 +119,109 @@ describe('Vesting Contract tests', function () {
     });
 
     it('Cliff time test', async function () {
-      const { token, merkleTree, vestingContract, timeUInt, signer1 } =
-        await loadFixture(deployment);
+      const { token, merkleTree, vestingContract, signer1 } = await loadFixture(
+        deployment,
+      );
       await token.transfer(vestingContract.address, 10);
       const data = ethers.utils.solidityPack(
-        ['address', 'uint256', 'uint256'],
-        [await signer1.getAddress(), 5, timeUInt],
+        ['address', 'uint256'],
+        [await signer1.getAddress(), 5],
       );
       const proof = merkleTree.getHexProof(keccak256(data));
       await expect(
-        vestingContract.connect(signer1).claim(2, timeUInt, 5, proof),
+        vestingContract.connect(signer1).claim(5, proof),
       ).to.be.revertedWith("Cliff period didn't end");
     });
 
     it('Insufficient amount test', async function () {
-      const { token, merkleTree, vestingContract, timeUInt, signer1 } =
-        await loadFixture(deployment);
+      const { token, merkleTree, vestingContract, signer1 } = await loadFixture(
+        deployment,
+      );
       await token.transfer(vestingContract.address, 10);
       const data = ethers.utils.solidityPack(
-        ['address', 'uint256', 'uint256'],
-        [await signer1.getAddress(), 5, timeUInt],
+        ['address', 'uint256'],
+        [await signer1.getAddress(), 5],
       );
       const proof = merkleTree.getHexProof(keccak256(data));
       await network.provider.send('evm_increaseTime', [
         60 * 60 * 24 * 30 * 365 * 2,
       ]);
       await expect(
-        vestingContract.connect(signer1).claim(7, timeUInt, 5, proof),
-      ).to.be.revertedWith('Insufficient amount');
+        vestingContract.connect(signer1).claim(7, proof),
+      ).to.be.revertedWith('Invalid proof');
     });
 
     it('Invalid proof test', async function () {
-      const { token, merkleTree, vestingContract, timeUInt, signer1 } =
-        await loadFixture(deployment);
+      const { token, merkleTree, vestingContract, signer1 } = await loadFixture(
+        deployment,
+      );
       await token.transfer(vestingContract.address, 10);
       const data = ethers.utils.solidityPack(
-        ['address', 'uint256', 'uint256'],
-        [await signer1.getAddress(), 6, timeUInt],
+        ['address', 'uint256'],
+        [await signer1.getAddress(), 6],
       );
       const proof = merkleTree.getHexProof(keccak256(data));
       await network.provider.send('evm_increaseTime', [
         60 * 60 * 24 * 30 * 365 * 2,
       ]);
       await expect(
-        vestingContract.connect(signer1).claim(2, timeUInt, 5, proof),
+        vestingContract.connect(signer1).claim(5, proof),
       ).to.be.revertedWith('Invalid proof');
     });
   });
 
   describe('Claim with admin signature tests', async function () {
     it('Claim test', async function () {
-      const { token, vestingContract, timeUInt, signer } = await loadFixture(
-        deployment,
-      );
+      const { token, vestingContract, signer } = await loadFixture(deployment);
       await token.transfer(vestingContract.address, 10);
       const data = ethers.utils.solidityPack(
-        ['address', 'uint256', 'uint256', 'uint256'],
-        [await signer.getAddress(), 5, 2, timeUInt],
+        ['address', 'uint256'],
+        [await signer.getAddress(), 5],
       );
       const hashedMessage = Buffer.from(keccak256(data).slice(2), 'hex');
       const signature = await signer.signMessage(hashedMessage);
       await network.provider.send('evm_increaseTime', [
         60 * 60 * 24 * 30 * 365 * 2,
       ]);
-      await vestingContract
-        .connect(signer)
-        .claimByAdminSignature(2, 5, timeUInt, signature);
+      await vestingContract.connect(signer).claimByAdminSignature(5, signature);
       const balance = await token.balanceOf(vestingContract.address);
-      expect(balance.toString()).is.eq('8');
+      expect(balance.toString()).is.eq('5');
     });
 
     it('Cliff time test', async function () {
-      const { token, vestingContract, timeUInt, signer } = await loadFixture(
-        deployment,
-      );
+      const { token, vestingContract, signer } = await loadFixture(deployment);
       await token.transfer(vestingContract.address, 10);
       const data = ethers.utils.solidityPack(
-        ['address', 'uint256', 'uint256', 'uint256'],
-        [await signer.getAddress(), 5, 2, timeUInt],
+        ['address', 'uint256'],
+        [await signer.getAddress(), 5],
       );
       const hashedMessage = Buffer.from(keccak256(data).slice(2), 'hex');
       const signature = await signer.signMessage(hashedMessage);
       await expect(
-        vestingContract
-          .connect(signer)
-          .claimByAdminSignature(2, 5, timeUInt, signature),
+        vestingContract.connect(signer).claimByAdminSignature(5, signature),
       ).to.be.revertedWith("Cliff period didn't end");
     });
 
-    it('Insufficient amount test', async function () {
-      const { token, vestingContract, timeUInt, signer } = await loadFixture(
-        deployment,
-      );
+    it('Cliff time test', async function () {
+      const { token, vestingContract, signer } = await loadFixture(deployment);
       await token.transfer(vestingContract.address, 10);
       const data = ethers.utils.solidityPack(
-        ['address', 'uint256', 'uint256', 'uint256'],
-        [await signer.getAddress(), 5, 7, timeUInt],
+        ['address', 'uint256'],
+        [await signer.getAddress(), 5],
       );
       const hashedMessage = Buffer.from(keccak256(data).slice(2), 'hex');
       const signature = await signer.signMessage(hashedMessage);
-      await network.provider.send('evm_increaseTime', [
-        60 * 60 * 24 * 30 * 365 * 2,
-      ]);
       await expect(
-        vestingContract
-          .connect(signer)
-          .claimByAdminSignature(7, 5, timeUInt, signature),
-      ).to.be.revertedWith('Insufficient amount');
+        vestingContract.connect(signer).claimByAdminSignature(5, signature),
+      ).to.be.revertedWith("Cliff period didn't end");
     });
 
     it('Invalid signature test', async function () {
-      const { token, vestingContract, timeUInt, signer } = await loadFixture(
-        deployment,
-      );
+      const { token, vestingContract, signer } = await loadFixture(deployment);
       await token.transfer(vestingContract.address, 10);
       const data = ethers.utils.solidityPack(
-        ['address', 'uint256', 'uint256', 'uint256'],
-        [await signer.getAddress(), 5, 2, timeUInt],
+        ['address', 'uint256'],
+        [await signer.getAddress(), 5],
       );
       const hashedMessage = Buffer.from(keccak256(data).slice(2), 'hex');
       const signature = await signer.signMessage(hashedMessage);
@@ -243,10 +229,34 @@ describe('Vesting Contract tests', function () {
         60 * 60 * 24 * 30 * 365 * 2,
       ]);
       await expect(
-        vestingContract
-          .connect(signer)
-          .claimByAdminSignature(2, 4, timeUInt, signature),
+        vestingContract.connect(signer).claimByAdminSignature(4, signature),
       ).to.be.revertedWith('Invalid signature');
+    });
+  });
+
+  describe('Attack', async function () {
+    it('Attack test', async function () {
+      const { token, merkleTree, vestingContract, signer1 } = await loadFixture(
+        deployment,
+      );
+      await token.transfer(vestingContract.address, 10);
+      const data = ethers.utils.solidityPack(
+        ['address', 'uint256'],
+        [await signer1.getAddress(), 5],
+      );
+      const proof = merkleTree.getHexProof(keccak256(data));
+      await network.provider.send('evm_increaseTime', [
+        60 * 60 * 24 * 30 * 365 * 2,
+      ]);
+      console.log(
+        `Balance before attack: ${(
+          await token.balanceOf(await signer1.getAddress())
+        ).toString()}`,
+      );
+      await vestingContract.connect(signer1).claim(5, proof);
+      await expect(
+        vestingContract.connect(signer1).claim(5, proof),
+      ).to.be.revertedWith('User has already claimed');
     });
   });
 });
